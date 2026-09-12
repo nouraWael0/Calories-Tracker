@@ -1,16 +1,24 @@
 // storage.js
 // -----------------------------------------------------------------------
 // Everything related to data persistence and calorie allocation math
-// lives here. Data model: an array of "weeks", each with 7 days. The
-// last week in the array is always the active week (the one currently
-// being logged).
+// lives here.
+//
+// Data model: state.weeks is an array of week objects, each with a
+// unique weekStartDate and a status:
+//   - "active": the one live week you're currently logging day by day.
+//     There is always exactly one of these. Its days redistribute
+//     allocation automatically as you go (the core budgeting logic).
+//   - "past": a completed week. This includes weeks that finished
+//     naturally (all 7 days locked in sequence) AND weeks added
+//     manually via "Add Past Week" for record-keeping. Past weeks
+//     never redistribute — each day simply keeps the flat dailyTarget,
+//     and you can fill in any day, in any order, freely.
 // -----------------------------------------------------------------------
 
 const STORAGE_KEY = "calorieLedgerState";
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 const Storage = {
-  // Returns the full saved state, or null if nothing has been saved yet
   load() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
@@ -26,7 +34,7 @@ const Storage = {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   },
 
-  // Returns the most recent Sunday (today itself, if today is Sunday)
+  // Returns the most recent Sunday on/before the given date
   getMostRecentSunday(date = new Date()) {
     const d = new Date(date);
     d.setDate(d.getDate() - d.getDay());
@@ -39,24 +47,52 @@ const Storage = {
     return d.toISOString().split("T")[0]; // YYYY-MM-DD
   },
 
-  // Creates a brand new empty week based on the daily target
-  createWeek(dailyTarget, startDate = new Date()) {
+  // Creates a new week object. `status` is "active" or "past".
+  createWeek(dailyTarget, startDate = new Date(), status = "active") {
     const sunday = this.getMostRecentSunday(startDate);
     return {
       weekStartDate: this.formatDate(sunday),
       dailyTarget: dailyTarget,
+      status: status,
       currentDayIndex: 0,
       days: DAY_NAMES.map((name) => ({
         name,
         allocated: dailyTarget,
-        consumed: null, // null = not logged yet (renders as "–")
+        consumed: null, // null = not logged yet
         locked: false,
       })),
     };
   },
 
+  getActiveWeek(state) {
+    return state.weeks.find((w) => w.status === "active") || null;
+  },
+
+  // If there's no active week (the last one just completed), start a
+  // fresh one for the following Sunday so the app keeps working
+  // indefinitely.
+  ensureActiveWeek(state) {
+    if (this.getActiveWeek(state)) return;
+
+    const sorted = [...state.weeks].sort((a, b) =>
+      a.weekStartDate.localeCompare(b.weekStartDate)
+    );
+    const lastWeek = sorted[sorted.length - 1];
+    const target = state.defaultDailyTarget || (lastWeek ? lastWeek.dailyTarget : 1200);
+
+    let nextStart = new Date();
+    if (lastWeek) {
+      nextStart = new Date(lastWeek.weekStartDate);
+      nextStart.setDate(nextStart.getDate() + 7);
+    }
+
+    const newWeek = this.createWeek(target, nextStart, "active");
+    state.weeks.push(newWeek);
+  },
+
   // ------------------------------------------------------------------
-  // The single unified rule for redistributing calories across open days
+  // The single unified rule for redistributing calories across open
+  // days of the ACTIVE week only:
   // remainingBudget = (dailyTarget × 7) − sum of consumed for locked days
   // newAllocated for each open day = remainingBudget ÷ number of open days
   // ------------------------------------------------------------------
@@ -67,7 +103,7 @@ const Storage = {
       .reduce((sum, d) => sum + (d.consumed || 0), 0);
 
     const openDays = week.days.filter((d) => !d.locked);
-    if (openDays.length === 0) return; // the whole week is locked, nothing to redistribute
+    if (openDays.length === 0) return;
 
     const remainingBudget = weeklyBudget - lockedConsumedSum;
     const newAllocated = Math.round(remainingBudget / openDays.length);
@@ -77,15 +113,18 @@ const Storage = {
     });
   },
 
-  // Updates the active (unlocked) day's consumed value — live recalculates
-  // the allocation for upcoming days
-  updateActiveDayConsumed(week, value) {
-    const day = week.days[week.currentDayIndex];
-    day.consumed = value;
-    this.recalcAllocation(week);
+  // Sets a day's consumed value. For the active week this also
+  // recalculates allocation for the remaining open days. For past
+  // weeks, allocation stays flat — nothing to redistribute.
+  setDayConsumed(week, dayIndex, value) {
+    week.days[dayIndex].consumed = value;
+    if (week.status === "active") {
+      this.recalcAllocation(week);
+    }
   },
 
-  // Locks the current day and advances the pointer to the next one
+  // Locks the current day of the active week and advances the pointer.
+  // If Saturday was just locked, the week is complete and flips to "past".
   lockCurrentDay(week) {
     const day = week.days[week.currentDayIndex];
     if (day.consumed === null) day.consumed = 0;
@@ -93,28 +132,23 @@ const Storage = {
 
     if (week.currentDayIndex < 6) {
       week.currentDayIndex += 1;
+      this.recalcAllocation(week);
+    } else {
+      week.status = "past";
     }
-    this.recalcAllocation(week);
   },
 
-  // Edits a past (locked) day from history — only recalculates the
-  // allocation for the still-open days that come after it
-  editHistoricalDay(week, dayIndex, newValue) {
-    week.days[dayIndex].consumed = newValue;
-    this.recalcAllocation(week);
-  },
-
-  // Target vs. actual totals for a full week (includes the active day's
-  // current value)
+  // Target vs. actual totals for a full week
   getWeekTotals(week) {
     const totalTarget = week.dailyTarget * 7;
     const totalActual = week.days.reduce((sum, d) => sum + (d.consumed || 0), 0);
     return { totalTarget, totalActual, diff: totalActual - totalTarget };
   },
 
-  // Has midnight passed for the active day? (compares today's real date
-  // against weekStartDate + number of locked days)
+  // Has midnight passed for the active day of the active week?
   isMidnightPassed(week) {
+    if (week.status !== "active" || week.currentDayIndex >= 6) return false;
+
     const sunday = new Date(week.weekStartDate);
     const expectedActiveDate = new Date(sunday);
     expectedActiveDate.setDate(sunday.getDate() + week.currentDayIndex);
@@ -123,6 +157,6 @@ const Storage = {
     today.setHours(0, 0, 0, 0);
     expectedActiveDate.setHours(0, 0, 0, 0);
 
-    return today > expectedActiveDate && week.currentDayIndex < 6;
+    return today > expectedActiveDate;
   },
 };

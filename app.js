@@ -1,8 +1,10 @@
 // app.js
 // -----------------------------------------------------------------------
 // App logic + rendering. Single page: all weeks render from oldest (top)
-// to newest (bottom), with the last week at the bottom being the active
-// one currently being logged.
+// to newest (bottom) by weekStartDate. Exactly one week has
+// status "active" (the one you're currently logging); everything else
+// is "past" — either finished naturally or added manually for
+// record-keeping.
 // -----------------------------------------------------------------------
 
 let state = Storage.load();
@@ -15,13 +17,13 @@ function init() {
     return;
   }
 
-  const activeWeek = state.weeks[state.weeks.length - 1];
-
-  // Midnight check: if a day (or more) has passed, auto-lock it and
-  // advance to the next day
-  while (Storage.isMidnightPassed(activeWeek)) {
-    Storage.lockCurrentDay(activeWeek);
+  const activeWeek = Storage.getActiveWeek(state);
+  if (activeWeek) {
+    while (Storage.isMidnightPassed(activeWeek)) {
+      Storage.lockCurrentDay(activeWeek);
+    }
   }
+  Storage.ensureActiveWeek(state);
   Storage.save(state);
 
   render();
@@ -40,14 +42,16 @@ function renderOnboarding() {
   document.getElementById("startBtn").addEventListener("click", () => {
     const val = parseInt(document.getElementById("targetInput").value, 10);
     if (!val || val <= 0) return;
-    state = { weeks: [Storage.createWeek(val)] };
+    state = { weeks: [Storage.createWeek(val, new Date(), "active")] };
     Storage.save(state);
     render();
   });
 }
 
 // ---------- Color / arrow logic ----------
-// Returns { text, colorClass, arrow } describing how a day should render
+// Returns { text, colorClass, arrow } describing how a day's diff cell
+// should render. `isActive` = this is the live, currently-open day of
+// the active week.
 function getDayVisual(day, isActive) {
   if (day.consumed === null) {
     return { text: "–", colorClass: "muted", arrow: "" };
@@ -68,7 +72,7 @@ function getDayVisual(day, isActive) {
       return { text: `${fmt(diff)}+`, colorClass: color, arrow: "↑" };
     }
   } else {
-    // Locked day / total row
+    // Finished day (locked, or any day in a past week) / total row
     if (diff === 0) return { text: "✓", colorClass: "neutral", arrow: "" };
 
     const absDiff = Math.abs(diff);
@@ -85,24 +89,35 @@ function fmt(n) {
 }
 
 // ---------- Render a single week block ----------
-function renderWeekBlock(week, weekIndex, isCurrentWeek) {
+function renderWeekBlock(week) {
+  const isActiveWeek = week.status === "active";
   const { totalTarget, totalActual, diff } = Storage.getWeekTotals(week);
 
   const rows = week.days
     .map((day, i) => {
-      const isActive = isCurrentWeek && i === week.currentDayIndex && !day.locked;
+      const isActive = isActiveWeek && i === week.currentDayIndex && !day.locked;
       const visual = getDayVisual(day, isActive);
-      const editable = isCurrentWeek && (isActive || day.locked);
+
+      // Editable: on the active week, only the live day or already-
+      // locked (historical) days. On a past week, every day is always
+      // freely editable, in any order.
+      const editable = isActiveWeek ? isActive || day.locked : true;
+
+      // The number shown next to the day: what was actually eaten if
+      // logged, otherwise the allocation for that day (in gray) as a
+      // preview/placeholder.
+      const consumedDisplay = day.consumed !== null ? fmt(day.consumed) : fmt(day.allocated);
+      const consumedClass = day.consumed !== null ? "" : "muted";
 
       return `
-        <div class="day-row ${isActive ? "active" : ""}" data-week="${weekIndex}" data-day="${i}">
+        <div class="day-row ${isActive ? "active" : ""}" data-week="${week.weekStartDate}" data-day="${i}">
           <span class="day-name">${day.name}</span>
-          <span class="day-consumed">${day.consumed !== null ? fmt(day.consumed) : "–"}</span>
+          <span class="day-consumed ${consumedClass}">${consumedDisplay}</span>
           <span class="day-diff ${visual.colorClass}">
             ${visual.arrow ? `<span class="arrow ${visual.colorClass}">${visual.arrow}</span>` : ""}
             ${visual.text}
           </span>
-          ${editable ? `<button class="edit-btn" data-action="edit" data-week="${weekIndex}" data-day="${i}">${isActive ? "Set" : "✎"}</button>` : ""}
+          ${editable ? `<button class="edit-btn" data-action="edit" data-week="${week.weekStartDate}" data-day="${i}">${isActive ? "Set" : "✎"}</button>` : ""}
         </div>
       `;
     })
@@ -113,10 +128,10 @@ function renderWeekBlock(week, weekIndex, isCurrentWeek) {
   const totalArrow = diff === 0 ? "" : diff > 0 ? "↑" : "↓";
 
   return `
-    <section class="week-block ${isCurrentWeek ? "current" : "past"}">
+    <section class="week-block ${isActiveWeek ? "current" : "past"}">
       <div class="week-header">
         <span>${week.weekStartDate}</span>
-        ${isCurrentWeek ? `<button data-action="edit-target" data-week="${weekIndex}">⚙ Target: ${fmt(week.dailyTarget)}</button>` : ""}
+        ${isActiveWeek ? `<button data-action="edit-target" data-week="${week.weekStartDate}">⚙ Target: ${fmt(week.dailyTarget)}</button>` : ""}
       </div>
       ${rows}
       <div class="day-row total-row">
@@ -133,42 +148,59 @@ function renderWeekBlock(week, weekIndex, isCurrentWeek) {
 
 // ---------- Full render ----------
 function render() {
-  const blocks = state.weeks
-    .map((week, i) => renderWeekBlock(week, i, i === state.weeks.length - 1))
-    .join("");
+  const sortedWeeks = [...state.weeks].sort((a, b) =>
+    a.weekStartDate.localeCompare(b.weekStartDate)
+  );
 
-  root.innerHTML = `<div class="ledger">${blocks}</div>`;
+  const blocks = sortedWeeks.map((week) => renderWeekBlock(week)).join("");
+
+  root.innerHTML = `
+    <div class="ledger">
+      <button class="add-past-week-btn" data-action="add-past-week">+ Add Past Week</button>
+      ${blocks}
+    </div>
+  `;
   attachEvents();
 
   // Auto-scroll to the bottom (most recent content)
   window.scrollTo(0, document.body.scrollHeight);
 }
 
+// ---------- Helpers ----------
+function findWeek(weekStartDate) {
+  return state.weeks.find((w) => w.weekStartDate === weekStartDate);
+}
+
 // ---------- Events ----------
 function attachEvents() {
   document.querySelectorAll('[data-action="edit"]').forEach((btn) => {
     btn.addEventListener("click", (e) => {
-      const weekIndex = parseInt(e.target.dataset.week, 10);
+      const weekStartDate = e.target.dataset.week;
       const dayIndex = parseInt(e.target.dataset.day, 10);
-      handleDayEdit(weekIndex, dayIndex);
+      handleDayEdit(weekStartDate, dayIndex);
     });
   });
 
   document.querySelectorAll('[data-action="edit-target"]').forEach((btn) => {
     btn.addEventListener("click", (e) => {
-      const weekIndex = parseInt(e.target.dataset.week, 10);
-      handleTargetEdit(weekIndex);
+      handleTargetEdit(e.target.dataset.week);
     });
   });
+
+  const addPastBtn = document.querySelector('[data-action="add-past-week"]');
+  if (addPastBtn) addPastBtn.addEventListener("click", handleAddPastWeek);
 }
 
-function handleDayEdit(weekIndex, dayIndex) {
-  const week = state.weeks[weekIndex];
+function handleDayEdit(weekStartDate, dayIndex) {
+  const week = findWeek(weekStartDate);
   const day = week.days[dayIndex];
-  const isActiveDay = dayIndex === week.currentDayIndex && !day.locked;
+  const isActiveWeek = week.status === "active";
+  const isActiveDay = isActiveWeek && dayIndex === week.currentDayIndex && !day.locked;
 
-  // If it's a locked (historical) day, confirm before editing
-  if (day.locked) {
+  // Only the active week's already-locked days need a confirmation —
+  // past weeks (whether finished naturally or added manually) are
+  // always freely editable, no warning needed.
+  if (isActiveWeek && day.locked) {
     const confirmed = confirm("This day is locked. Do you want to edit history?");
     if (!confirmed) return;
   }
@@ -178,20 +210,22 @@ function handleDayEdit(weekIndex, dayIndex) {
   const value = parseInt(input, 10);
   if (isNaN(value) || value < 0) return;
 
+  Storage.setDayConsumed(week, dayIndex, value);
+
   if (isActiveDay) {
-    Storage.updateActiveDayConsumed(week, value);
     const lockNow = confirm("Saved. Lock this day now and move to the next one?");
-    if (lockNow) Storage.lockCurrentDay(week);
-  } else {
-    Storage.editHistoricalDay(week, dayIndex, value);
+    if (lockNow) {
+      Storage.lockCurrentDay(week);
+      Storage.ensureActiveWeek(state);
+    }
   }
 
   Storage.save(state);
   render();
 }
 
-function handleTargetEdit(weekIndex) {
-  const week = state.weeks[weekIndex];
+function handleTargetEdit(weekStartDate) {
+  const week = findWeek(weekStartDate);
   const input = prompt("New daily target:", week.dailyTarget);
   if (input === null) return;
   const value = parseInt(input, 10);
@@ -208,6 +242,38 @@ function handleTargetEdit(weekIndex) {
     state.defaultDailyTarget = value;
   }
 
+  Storage.save(state);
+  render();
+}
+
+// Adds a fully past week for record-keeping. All 7 days can be filled
+// in freely, in any order, with a flat allocation (no redistribution).
+function handleAddPastWeek() {
+  const dateInput = prompt("Week start date (any day in that week), format YYYY-MM-DD:");
+  if (!dateInput) return;
+
+  const parsedDate = new Date(dateInput);
+  if (isNaN(parsedDate.getTime())) {
+    alert("Couldn't read that date. Please use the format YYYY-MM-DD, e.g. 2026-08-16.");
+    return;
+  }
+
+  const defaultTarget =
+    state.defaultDailyTarget ||
+    (state.weeks.length ? state.weeks[state.weeks.length - 1].dailyTarget : 1200);
+  const targetInput = prompt("Daily target for that week:", defaultTarget);
+  if (targetInput === null) return;
+  const target = parseInt(targetInput, 10);
+  if (isNaN(target) || target <= 0) return;
+
+  const newWeek = Storage.createWeek(target, parsedDate, "past");
+
+  if (findWeek(newWeek.weekStartDate)) {
+    alert("A week starting on this Sunday already exists.");
+    return;
+  }
+
+  state.weeks.push(newWeek);
   Storage.save(state);
   render();
 }

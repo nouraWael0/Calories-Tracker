@@ -1,0 +1,198 @@
+/* ---------------------------------------------------------------
+   دفتر السعرات — شكل "دفتر حسابات": ورق فاتح، خطوط فاصلة رفيعة،
+   أرقام بخط monospace يشبه الإيصال. الألوان الوظيفية (أحمر/أخضر/
+   أصفر/رمادي) هي فقط أدوات الحالة، ما فيه ألوان زخرفية زيادة.
+   --------------------------------------------------------------- */
+
+:root {
+  --paper: #f5f1e8;
+  --paper-line: #d9d2c2;
+  --ink: #232620;
+  --ink-soft: #6f6a5b;
+  --neutral: #9a9484;
+  --red: #b7472a;
+  --green: #3f6b4f;
+  --yellow: #a6791f;
+
+  --serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --mono: ui-monospace, "SF Mono", "Courier New", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  padding-bottom: 3rem;
+}
+
+/* ---------- شاشة أول استخدام ---------- */
+.onboarding {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.onboarding h1 {
+  font-size: 1.6rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.onboarding p {
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.onboarding input {
+  font-family: var(--mono);
+  font-size: 1.2rem;
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--paper-line);
+  background: #fff;
+  border-radius: 4px;
+  width: 100%;
+  max-width: 240px;
+  text-align: center;
+}
+
+.onboarding button,
+.edit-btn,
+.week-header button {
+  font-family: var(--serif);
+  background: var(--ink);
+  color: var(--paper);
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1.1rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+/* ---------- الدفتر ---------- */
+.ledger {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 1rem 1rem 4rem;
+}
+
+.week-block {
+  direction: ltr;
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 0.75rem;
+  margin-bottom: 1.75rem;
+}
+
+.week-block.past {
+  opacity: 0.75;
+}
+
+.week-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  padding: 0.5rem 0.1rem 0.75rem;
+  border-bottom: 1px dashed var(--paper-line);
+  margin-bottom: 0.25rem;
+}
+
+.week-header button {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.day-row {
+  display: grid;
+  grid-template-columns: 90px 1fr auto auto;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.1rem;
+  border-bottom: 1px solid var(--paper-line);
+  font-family: var(--mono);
+  font-size: 0.95rem;
+}
+
+.day-row.active {
+  background: rgba(35, 38, 32, 0.04);
+  border-radius: 4px;
+}
+
+.day-name {
+  font-family: var(--serif);
+  font-weight: 600;
+}
+
+.day-consumed {
+  text-align: right;
+  color: var(--ink);
+}
+
+.day-diff {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  justify-content: flex-end;
+  min-width: 76px;
+  font-size: 0.85rem;
+}
+
+.arrow {
+  font-weight: 700;
+}
+
+.edit-btn {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.total-row {
+  border-bottom: none;
+  border-top: 1px solid var(--ink);
+  margin-top: 0.3rem;
+  padding-top: 0.6rem;
+  font-weight: 600;
+}
+
+/* ---------- حالات الألوان الوظيفية ---------- */
+.neutral,
+.muted {
+  color: var(--neutral);
+}
+.red {
+  color: var(--red);
+}
+.green {
+  color: var(--green);
+}
+.yellow {
+  color: var(--yellow);
+}
+
+/* ---------- موبايل ---------- */
+@media (max-width: 420px) {
+  .day-row {
+    grid-template-columns: 78px 1fr auto auto;
+    font-size: 0.88rem;
+  }
+  .day-diff {
+    min-width: 64px;
+  }
+}

@@ -1,6 +1,7 @@
 // service-worker.js
-// يخزن كل ملفات التطبيق أول مرة يفتح فيها، وبعدين يقدم كل شي من الكاش
-// حتى بدون إنترنت. البيانات نفسها (localStorage) منفصلة تمامًا عن هذا.
+// Caches all app files the first time it opens, then serves everything
+// from the cache — works fully offline. The actual data (localStorage)
+// is completely separate from this.
 
 const CACHE_NAME = "calorie-ledger-v1";
 const FILES_TO_CACHE = [

@@ -1,13 +1,14 @@
 // app.js
 // -----------------------------------------------------------------------
-// اللوجيك + الرسم على الشاشة. صفحة وحدة، كل الأسابيع تترسم من الأقدم
-// (فوق) للأحدث (تحت)، والأسبوع الأخير بالأسفل هو النشط.
+// App logic + rendering. Single page: all weeks render from oldest (top)
+// to newest (bottom), with the last week at the bottom being the active
+// one currently being logged.
 // -----------------------------------------------------------------------
 
 let state = Storage.load();
 const root = document.getElementById("app");
 
-// ---------- نقطة البداية ----------
+// ---------- Entry point ----------
 function init() {
   if (!state) {
     renderOnboarding();
@@ -16,7 +17,8 @@ function init() {
 
   const activeWeek = state.weeks[state.weeks.length - 1];
 
-  // شيك منتصف الليل: إذا فات، نقفل اليوم تلقائيًا وننتقل لليوم التالي
+  // Midnight check: if a day (or more) has passed, auto-lock it and
+  // advance to the next day
   while (Storage.isMidnightPassed(activeWeek)) {
     Storage.lockCurrentDay(activeWeek);
   }
@@ -25,14 +27,14 @@ function init() {
   render();
 }
 
-// ---------- شاشة أول استخدام: إدخال الهدف اليومي ----------
+// ---------- First-run screen: set the daily target ----------
 function renderOnboarding() {
   root.innerHTML = `
     <div class="onboarding">
-      <h1>دفتر السعرات</h1>
-      <p>كم هدفك اليومي من السعرات؟</p>
-      <input type="number" id="targetInput" placeholder="مثال: 1200" inputmode="numeric" />
-      <button id="startBtn">ابدأ</button>
+      <h1>Calorie Ledger</h1>
+      <p>What's your daily calorie target?</p>
+      <input type="number" id="targetInput" placeholder="e.g. 1200" inputmode="numeric" />
+      <button id="startBtn">Start</button>
     </div>
   `;
   document.getElementById("startBtn").addEventListener("click", () => {
@@ -44,8 +46,8 @@ function renderOnboarding() {
   });
 }
 
-// ---------- منطق الألوان والأسهم ----------
-// يرجع { text, colorClass, arrow } حسب حالة اليوم
+// ---------- Color / arrow logic ----------
+// Returns { text, colorClass, arrow } describing how a day should render
 function getDayVisual(day, isActive) {
   if (day.consumed === null) {
     return { text: "–", colorClass: "muted", arrow: "" };
@@ -54,19 +56,19 @@ function getDayVisual(day, isActive) {
   const diff = day.consumed - day.allocated;
 
   if (isActive) {
-    // اليوم النشط: نعرض "الباقي" بدل الفرق المباشر
+    // Active day: show "remaining" instead of the raw diff
     if (diff === 0) return { text: "✓", colorClass: "neutral", arrow: "" };
 
     if (diff < 0) {
       const remaining = Math.abs(diff);
       const color = remaining >= 200 ? "green" : "neutral";
-      return { text: `متبقي ${fmt(remaining)}`, colorClass: color, arrow: "↓" };
+      return { text: `${fmt(remaining)} left`, colorClass: color, arrow: "↓" };
     } else {
       const color = diff >= 200 ? "red" : "neutral";
       return { text: `${fmt(diff)}+`, colorClass: color, arrow: "↑" };
     }
   } else {
-    // يوم منتهي / صف الإجمالي
+    // Locked day / total row
     if (diff === 0) return { text: "✓", colorClass: "neutral", arrow: "" };
 
     const absDiff = Math.abs(diff);
@@ -82,7 +84,7 @@ function fmt(n) {
   return Number(n).toLocaleString("en-US");
 }
 
-// ---------- رسم أسبوع واحد (بلوك) ----------
+// ---------- Render a single week block ----------
 function renderWeekBlock(week, weekIndex, isCurrentWeek) {
   const { totalTarget, totalActual, diff } = Storage.getWeekTotals(week);
 
@@ -114,11 +116,11 @@ function renderWeekBlock(week, weekIndex, isCurrentWeek) {
     <section class="week-block ${isCurrentWeek ? "current" : "past"}">
       <div class="week-header">
         <span>${week.weekStartDate}</span>
-        ${isCurrentWeek ? `<button data-action="edit-target" data-week="${weekIndex}">⚙ هدف: ${fmt(week.dailyTarget)}</button>` : ""}
+        ${isCurrentWeek ? `<button data-action="edit-target" data-week="${weekIndex}">⚙ Target: ${fmt(week.dailyTarget)}</button>` : ""}
       </div>
       ${rows}
       <div class="day-row total-row">
-        <span class="day-name">الإجمالي</span>
+        <span class="day-name">Total</span>
         <span class="day-consumed">${fmt(totalActual)} / ${fmt(totalTarget)}</span>
         <span class="day-diff ${totalColor}">
           ${totalArrow ? `<span class="arrow ${totalColor}">${totalArrow}</span>` : ""}
@@ -129,7 +131,7 @@ function renderWeekBlock(week, weekIndex, isCurrentWeek) {
   `;
 }
 
-// ---------- الرسم الكامل ----------
+// ---------- Full render ----------
 function render() {
   const blocks = state.weeks
     .map((week, i) => renderWeekBlock(week, i, i === state.weeks.length - 1))
@@ -138,11 +140,11 @@ function render() {
   root.innerHTML = `<div class="ledger">${blocks}</div>`;
   attachEvents();
 
-  // نسكرول لآخر الصفحة (أحدث محتوى) تلقائيًا
+  // Auto-scroll to the bottom (most recent content)
   window.scrollTo(0, document.body.scrollHeight);
 }
 
-// ---------- الأحداث ----------
+// ---------- Events ----------
 function attachEvents() {
   document.querySelectorAll('[data-action="edit"]').forEach((btn) => {
     btn.addEventListener("click", (e) => {
@@ -165,20 +167,20 @@ function handleDayEdit(weekIndex, dayIndex) {
   const day = week.days[dayIndex];
   const isActiveDay = dayIndex === week.currentDayIndex && !day.locked;
 
-  // لو يوم مقفول (هيستوري) نطلب تأكيد قبل التعديل
+  // If it's a locked (historical) day, confirm before editing
   if (day.locked) {
-    const confirmed = confirm("هذا اليوم مقفول. تبين تعدلين على الهيستوري؟");
+    const confirmed = confirm("This day is locked. Do you want to edit history?");
     if (!confirmed) return;
   }
 
-  const input = prompt(`سعرات ${day.name}:`, day.consumed ?? "");
+  const input = prompt(`${day.name} calories:`, day.consumed ?? "");
   if (input === null) return;
   const value = parseInt(input, 10);
   if (isNaN(value) || value < 0) return;
 
   if (isActiveDay) {
     Storage.updateActiveDayConsumed(week, value);
-    const lockNow = confirm("تم الحفظ. تبين تقفلين اليوم الحين وتنتقلين لليوم اللي بعده؟");
+    const lockNow = confirm("Saved. Lock this day now and move to the next one?");
     if (lockNow) Storage.lockCurrentDay(week);
   } else {
     Storage.editHistoricalDay(week, dayIndex, value);
@@ -190,13 +192,13 @@ function handleDayEdit(weekIndex, dayIndex) {
 
 function handleTargetEdit(weekIndex) {
   const week = state.weeks[weekIndex];
-  const input = prompt("الهدف اليومي الجديد:", week.dailyTarget);
+  const input = prompt("New daily target:", week.dailyTarget);
   if (input === null) return;
   const value = parseInt(input, 10);
   if (isNaN(value) || value <= 0) return;
 
   const scope = confirm(
-    "اضغطي 'موافق' لتطبيقه على هذا الأسبوع فقط، أو 'إلغاء' لجعله الهدف الافتراضي للأسابيع الجاية بدون تغيير هذا الأسبوع."
+    "Click 'OK' to apply this to this week only, or 'Cancel' to make it the default target for upcoming weeks without changing this week."
   );
 
   if (scope) {

@@ -1,22 +1,23 @@
 // storage.js
 // -----------------------------------------------------------------------
-// كل شي يخص تخزين البيانات وحساب توزيع السعرات (allocation) موجود هنا.
-// الفكرة: نخزن مصفوفة "weeks"، كل أسبوع فيه 7 أيام. الأسبوع الأخير بالمصفوفة
-// هو الأسبوع النشط (اللي نسجل فيه حاليًا).
+// Everything related to data persistence and calorie allocation math
+// lives here. Data model: an array of "weeks", each with 7 days. The
+// last week in the array is always the active week (the one currently
+// being logged).
 // -----------------------------------------------------------------------
 
 const STORAGE_KEY = "calorieLedgerState";
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 const Storage = {
-  // يرجع الحالة كاملة، أو null إذا ما فيه بيانات محفوظة بعد
+  // Returns the full saved state, or null if nothing has been saved yet
   load() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     try {
       return JSON.parse(raw);
     } catch (e) {
-      console.error("تعذّر قراءة البيانات المحفوظة:", e);
+      console.error("Failed to parse saved state:", e);
       return null;
     }
   },
@@ -25,7 +26,7 @@ const Storage = {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   },
 
-  // يرجع تاريخ أقرب أحد (يساوي اليوم لو اليوم نفسه أحد)
+  // Returns the most recent Sunday (today itself, if today is Sunday)
   getMostRecentSunday(date = new Date()) {
     const d = new Date(date);
     d.setDate(d.getDate() - d.getDay());
@@ -38,7 +39,7 @@ const Storage = {
     return d.toISOString().split("T")[0]; // YYYY-MM-DD
   },
 
-  // ينشئ أسبوع جديد فاضي بناء على الهدف اليومي
+  // Creates a brand new empty week based on the daily target
   createWeek(dailyTarget, startDate = new Date()) {
     const sunday = this.getMostRecentSunday(startDate);
     return {
@@ -48,16 +49,16 @@ const Storage = {
       days: DAY_NAMES.map((name) => ({
         name,
         allocated: dailyTarget,
-        consumed: null, // null = لسا ما انسجل (يطلع "–")
+        consumed: null, // null = not logged yet (renders as "–")
         locked: false,
       })),
     };
   },
 
   // ------------------------------------------------------------------
-  // القاعدة الموحدة لإعادة توزيع السعرات على الأيام المفتوحة
-  // remainingBudget = (dailyTarget × 7) − مجموع consumed للأيام المقفولة
-  // newAllocated لكل يوم مفتوح = remainingBudget ÷ عدد الأيام المفتوحة
+  // The single unified rule for redistributing calories across open days
+  // remainingBudget = (dailyTarget × 7) − sum of consumed for locked days
+  // newAllocated for each open day = remainingBudget ÷ number of open days
   // ------------------------------------------------------------------
   recalcAllocation(week) {
     const weeklyBudget = week.dailyTarget * 7;
@@ -66,7 +67,7 @@ const Storage = {
       .reduce((sum, d) => sum + (d.consumed || 0), 0);
 
     const openDays = week.days.filter((d) => !d.locked);
-    if (openDays.length === 0) return; // الأسبوع خلص بالكامل
+    if (openDays.length === 0) return; // the whole week is locked, nothing to redistribute
 
     const remainingBudget = weeklyBudget - lockedConsumedSum;
     const newAllocated = Math.round(remainingBudget / openDays.length);
@@ -76,14 +77,15 @@ const Storage = {
     });
   },
 
-  // تحديث سعرات اليوم النشط (قبل القفل) — يعيد التوزيع على الأيام الجاية لحظيًا
+  // Updates the active (unlocked) day's consumed value — live recalculates
+  // the allocation for upcoming days
   updateActiveDayConsumed(week, value) {
     const day = week.days[week.currentDayIndex];
     day.consumed = value;
     this.recalcAllocation(week);
   },
 
-  // قفل اليوم الحالي وينقل المؤشر لليوم اللي بعده
+  // Locks the current day and advances the pointer to the next one
   lockCurrentDay(week) {
     const day = week.days[week.currentDayIndex];
     if (day.consumed === null) day.consumed = 0;
@@ -95,21 +97,23 @@ const Storage = {
     this.recalcAllocation(week);
   },
 
-  // تعديل يوم قديم (مقفول) من الهيستوري — يعيد التوزيع للأيام المفتوحة بعده فقط
+  // Edits a past (locked) day from history — only recalculates the
+  // allocation for the still-open days that come after it
   editHistoricalDay(week, dayIndex, newValue) {
     week.days[dayIndex].consumed = newValue;
     this.recalcAllocation(week);
   },
 
-  // مجموع المستهدف والفعلي لأسبوع كامل (يشمل اليوم النشط بقيمته الحالية)
+  // Target vs. actual totals for a full week (includes the active day's
+  // current value)
   getWeekTotals(week) {
     const totalTarget = week.dailyTarget * 7;
     const totalActual = week.days.reduce((sum, d) => sum + (d.consumed || 0), 0);
     return { totalTarget, totalActual, diff: totalActual - totalTarget };
   },
 
-  // هل فات منتصف الليل على اليوم النشط؟ (نقارن تاريخ اليوم الحالي الفعلي
-  // بتاريخ بداية الأسبوع + عدد الأيام المقفولة)
+  // Has midnight passed for the active day? (compares today's real date
+  // against weekStartDate + number of locked days)
   isMidnightPassed(week) {
     const sunday = new Date(week.weekStartDate);
     const expectedActiveDate = new Date(sunday);

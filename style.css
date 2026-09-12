@@ -1,7 +1,8 @@
 /* ---------------------------------------------------------------
-   دفتر السعرات — شكل "دفتر حسابات": ورق فاتح، خطوط فاصلة رفيعة،
-   أرقام بخط monospace يشبه الإيصال. الألوان الوظيفية (أحمر/أخضر/
-   أصفر/رمادي) هي فقط أدوات الحالة، ما فيه ألوان زخرفية زيادة.
+   Calorie Ledger — a "ledger book" look: light paper, thin dividing
+   lines, monospace numbers like a receipt. The functional colors
+   (red/green/yellow/gray) are purely status indicators — no extra
+   decorative colors.
    --------------------------------------------------------------- */
 
 :root {
@@ -36,7 +37,7 @@ body {
   padding-bottom: 3rem;
 }
 
-/* ---------- شاشة أول استخدام ---------- */
+/* ---------- First-run screen ---------- */
 .onboarding {
   min-height: 100vh;
   display: flex;
@@ -84,7 +85,7 @@ body {
   cursor: pointer;
 }
 
-/* ---------- الدفتر ---------- */
+/* ---------- Ledger ---------- */
 .ledger {
   max-width: 480px;
   margin: 0 auto;
@@ -171,7 +172,7 @@ body {
   font-weight: 600;
 }
 
-/* ---------- حالات الألوان الوظيفية ---------- */
+/* ---------- Functional color states ---------- */
 .neutral,
 .muted {
   color: var(--neutral);
@@ -186,7 +187,7 @@ body {
   color: var(--yellow);
 }
 
-/* ---------- موبايل ---------- */
+/* ---------- Mobile ---------- */
 @media (max-width: 420px) {
   .day-row {
     grid-template-columns: 78px 1fr auto auto;

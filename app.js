@@ -49,6 +49,20 @@ function renderOnboarding() {
 }
 
 // ---------- Color / arrow logic ----------
+// Shared classification for any "closed" diff (a finished day, or the
+// weekly average vs target) — the ±200 threshold and colors are always
+// applied at the same DAILY scale.
+function classifyDiff(diff) {
+  if (diff === 0) return { text: "✓", colorClass: "neutral", arrow: "" };
+
+  const absDiff = Math.abs(diff);
+  const arrow = diff > 0 ? "↑" : "↓";
+
+  if (absDiff < 200) return { text: fmt(absDiff), colorClass: "yellow", arrow };
+  if (diff >= 200) return { text: fmt(absDiff), colorClass: "red", arrow };
+  return { text: fmt(absDiff), colorClass: "green", arrow };
+}
+
 // Returns { text, colorClass, arrow } describing how a day's diff cell
 // should render. `isActive` = this is the live, currently-open day of
 // the active week.
@@ -71,17 +85,10 @@ function getDayVisual(day, isActive) {
       const color = diff >= 200 ? "red" : "neutral";
       return { text: `${fmt(diff)}+`, colorClass: color, arrow: "↑" };
     }
-  } else {
-    // Finished day (locked, or any day in a past week) / total row
-    if (diff === 0) return { text: "✓", colorClass: "neutral", arrow: "" };
-
-    const absDiff = Math.abs(diff);
-    const arrow = diff > 0 ? "↑" : "↓";
-
-    if (absDiff < 200) return { text: `${arrow}${fmt(absDiff)}`, colorClass: "yellow", arrow };
-    if (diff >= 200) return { text: `${arrow}${fmt(absDiff)}`, colorClass: "red", arrow };
-    return { text: `${arrow}${fmt(absDiff)}`, colorClass: "green", arrow };
   }
+
+  // Finished day (locked, or any day in a past week)
+  return classifyDiff(diff);
 }
 
 function fmt(n) {
@@ -91,7 +98,7 @@ function fmt(n) {
 // ---------- Render a single week block ----------
 function renderWeekBlock(week) {
   const isActiveWeek = week.status === "active";
-  const { totalTarget, totalActual, diff } = Storage.getWeekTotals(week);
+  const { totalTarget, totalActual } = Storage.getWeekTotals(week);
 
   const rows = week.days
     .map((day, i) => {
@@ -123,23 +130,30 @@ function renderWeekBlock(week) {
     })
     .join("");
 
-  const totalColor =
-    diff === 0 ? "neutral" : Math.abs(diff) < 200 ? "yellow" : diff > 0 ? "red" : "green";
-  const totalArrow = diff === 0 ? "" : diff > 0 ? "↑" : "↓";
+  // The weekly total row compares the DAILY AVERAGE actually eaten
+  // against the DAILY target — kept on the same scale (and ±200
+  // threshold) as every individual day row, instead of comparing raw
+  // week-wide totals.
+  const dailyAverage = Math.round(totalActual / 7);
+  const totalDiff = dailyAverage - week.dailyTarget;
+  const totalVisual = classifyDiff(totalDiff);
 
   return `
     <section class="week-block ${isActiveWeek ? "current" : "past"}">
       <div class="week-header">
         <span>${week.weekStartDate}</span>
-        ${isActiveWeek ? `<button data-action="edit-target" data-week="${week.weekStartDate}">⚙ Target: ${fmt(week.dailyTarget)}</button>` : ""}
+        <span class="week-header-actions">
+          ${isActiveWeek ? `<button class="icon-btn" data-action="add-past-week" title="Log a past week">+</button>` : ""}
+          ${isActiveWeek ? `<button data-action="edit-target" data-week="${week.weekStartDate}">⚙ Target: ${fmt(week.dailyTarget)}</button>` : ""}
+        </span>
       </div>
       ${rows}
       <div class="day-row total-row">
         <span class="day-name">Total</span>
         <span class="day-consumed">${fmt(totalActual)} / ${fmt(totalTarget)}</span>
-        <span class="day-diff ${totalColor}">
-          ${totalArrow ? `<span class="arrow ${totalColor}">${totalArrow}</span>` : ""}
-          ${fmt(Math.abs(diff))}
+        <span class="day-diff ${totalVisual.colorClass}">
+          ${totalVisual.arrow ? `<span class="arrow ${totalVisual.colorClass}">${totalVisual.arrow}</span>` : ""}
+          ${totalVisual.text}
         </span>
       </div>
     </section>
@@ -156,8 +170,8 @@ function render() {
 
   root.innerHTML = `
     <div class="ledger">
-      <button class="add-past-week-btn" data-action="add-past-week">+ Add Past Week</button>
       ${blocks}
+      <button class="reset-link" data-action="reset-data">Reset all data</button>
     </div>
   `;
   attachEvents();
@@ -189,6 +203,9 @@ function attachEvents() {
 
   const addPastBtn = document.querySelector('[data-action="add-past-week"]');
   if (addPastBtn) addPastBtn.addEventListener("click", handleAddPastWeek);
+
+  const resetBtn = document.querySelector('[data-action="reset-data"]');
+  if (resetBtn) resetBtn.addEventListener("click", handleResetData);
 }
 
 function handleDayEdit(weekStartDate, dayIndex) {
@@ -249,6 +266,9 @@ function handleTargetEdit(weekStartDate) {
 // Adds a fully past week for record-keeping. All 7 days can be filled
 // in freely, in any order, with a flat allocation (no redistribution).
 function handleAddPastWeek() {
+  const wantsToLog = confirm("Do you want to log a past week?");
+  if (!wantsToLog) return;
+
   const dateInput = prompt("Week start date (any day in that week), format YYYY-MM-DD:");
   if (!dateInput) return;
 
@@ -276,6 +296,19 @@ function handleAddPastWeek() {
   state.weeks.push(newWeek);
   Storage.save(state);
   render();
+}
+
+// Wipes everything and goes back to the first-run screen. Useful for
+// clearing test entries before starting to log for real.
+function handleResetData() {
+  const sure = confirm("This deletes ALL logged weeks permanently. Are you sure?");
+  if (!sure) return;
+  const reallySure = confirm("Really sure? This can't be undone.");
+  if (!reallySure) return;
+
+  localStorage.removeItem("calorieLedgerState");
+  state = null;
+  renderOnboarding();
 }
 
 init();

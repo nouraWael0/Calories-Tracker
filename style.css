@@ -92,6 +92,38 @@ body {
   padding: 1rem 1rem 4rem;
 }
 
+.week-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.icon-btn {
+  font-family: var(--mono);
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1px dashed var(--paper-line);
+  border-radius: 4px;
+  width: 1.6rem;
+  height: 1.6rem;
+  line-height: 1;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.reset-link {
+  display: block;
+  margin: 2rem auto 0;
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  font-family: var(--serif);
+  font-size: 0.8rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .week-block {
   direction: ltr;
   border-bottom: 2px solid var(--ink);

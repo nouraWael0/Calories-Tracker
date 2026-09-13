@@ -96,6 +96,57 @@ body {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  position: relative;
+}
+
+.menu-wrap {
+  position: relative;
+}
+
+.week-menu {
+  position: absolute;
+  top: 2rem;
+  right: 0;
+  background: var(--ink);
+  border-radius: 6px;
+  padding: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 170px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  z-index: 10;
+}
+
+.week-menu button {
+  background: transparent;
+  color: var(--paper);
+  border: none;
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  font-family: var(--serif);
+  font-size: 0.85rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.week-menu button:hover {
+  background: rgba(245, 241, 232, 0.12);
+}
+
+.week-menu button.danger {
+  color: #e07a5f;
+}
+
+.data-actions {
+  display: flex;
+  justify-content: center;
+  gap: 1.2rem;
+  margin-top: 2rem;
+  flex-wrap: wrap;
+}
+
+.data-actions .reset-link {
+  margin: 0;
 }
 
 .icon-btn {
@@ -118,7 +169,7 @@ body {
 }
 
 .reset-link {
-  display: block;
+  display: inline-block;
   margin: 2rem auto 0;
   background: none;
   border: none;

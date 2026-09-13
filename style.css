@@ -112,6 +112,11 @@ body {
   padding: 0;
 }
 
+.icon-btn[data-action="delete-week"]:hover {
+  color: var(--red);
+  border-color: var(--red);
+}
+
 .reset-link {
   display: block;
   margin: 2rem auto 0;

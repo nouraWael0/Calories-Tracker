@@ -47,10 +47,14 @@ const Storage = {
     return d.toISOString().split("T")[0]; // YYYY-MM-DD
   },
 
-  // Creates a new week object. `status` is "active" or "past".
+  // Creates a new week object. `status` is "active" or "past". `id` is
+  // a stable unique identifier — separate from weekStartDate — so two
+  // weeks can never be confused with each other even if (through a
+  // bug or manual entry) they end up sharing the same date.
   createWeek(dailyTarget, startDate = new Date(), status = "active") {
     const sunday = this.getMostRecentSunday(startDate);
     return {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
       weekStartDate: this.formatDate(sunday),
       dailyTarget: dailyTarget,
       status: status,

@@ -5,6 +5,10 @@
 // status "active" (the one you're currently logging); everything else
 // is "past" — either finished naturally or added manually for
 // record-keeping.
+//
+// Every week has a unique `id` (separate from its display date) so two
+// weeks can never be confused with each other, even if they happen to
+// share the same weekStartDate.
 // -----------------------------------------------------------------------
 
 let state = Storage.load();
@@ -16,6 +20,14 @@ function init() {
     renderOnboarding();
     return;
   }
+
+  // Migration: older saved data may have weeks without an `id` — patch
+  // them in place so every week has one going forward.
+  state.weeks.forEach((week) => {
+    if (!week.id) {
+      week.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    }
+  });
 
   const activeWeek = Storage.getActiveWeek(state);
   if (activeWeek) {
@@ -64,17 +76,22 @@ function classifyDiff(diff) {
 }
 
 // Returns { text, colorClass, arrow } describing how a day's diff cell
-// should render. `isActive` = this is the live, currently-open day of
-// the active week.
-function getDayVisual(day, isActive) {
+// should render.
+// `isActive` = this is the live, currently-open day of the active week.
+// `dailyTarget` = the week's flat daily target (used for FINISHED days —
+// intentionally NOT the day's dynamically-redistributed `allocated`
+// value, so a day's grade always reflects the original daily target,
+// not how the week's budget happened to get rebalanced around it).
+function getDayVisual(day, isActive, dailyTarget) {
   if (day.consumed === null) {
     return { text: "–", colorClass: "muted", arrow: "" };
   }
 
-  const diff = day.consumed - day.allocated;
-
   if (isActive) {
-    // Active day: show "remaining" instead of the raw diff
+    // Active day: show "remaining" against this day's live allocation
+    // (the redistributed budget), since that's what tells you how much
+    // you actually have left to eat today.
+    const diff = day.consumed - day.allocated;
     if (diff === 0) return { text: "✓", colorClass: "neutral", arrow: "" };
 
     if (diff < 0) {
@@ -87,7 +104,9 @@ function getDayVisual(day, isActive) {
     }
   }
 
-  // Finished day (locked, or any day in a past week)
+  // Finished day (locked, or any day in a past week): graded against
+  // the flat daily target, not the redistributed allocation.
+  const diff = day.consumed - dailyTarget;
   return classifyDiff(diff);
 }
 
@@ -98,12 +117,12 @@ function fmt(n) {
 // ---------- Render a single week block ----------
 function renderWeekBlock(week) {
   const isActiveWeek = week.status === "active";
-  const { totalTarget, totalActual } = Storage.getWeekTotals(week);
+  const { totalActual } = Storage.getWeekTotals(week);
 
   const rows = week.days
     .map((day, i) => {
       const isActive = isActiveWeek && i === week.currentDayIndex && !day.locked;
-      const visual = getDayVisual(day, isActive);
+      const visual = getDayVisual(day, isActive, week.dailyTarget);
 
       // Editable: on the active week, only the live day or already-
       // locked (historical) days. On a past week, every day is always
@@ -117,23 +136,23 @@ function renderWeekBlock(week) {
       const consumedClass = day.consumed !== null ? "" : "muted";
 
       return `
-        <div class="day-row ${isActive ? "active" : ""}" data-week="${week.weekStartDate}" data-day="${i}">
+        <div class="day-row ${isActive ? "active" : ""}" data-week="${week.id}" data-day="${i}">
           <span class="day-name">${day.name}</span>
           <span class="day-consumed ${consumedClass}">${consumedDisplay}</span>
           <span class="day-diff ${visual.colorClass}">
             ${visual.arrow ? `<span class="arrow ${visual.colorClass}">${visual.arrow}</span>` : ""}
             ${visual.text}
           </span>
-          ${editable ? `<button class="edit-btn" data-action="edit" data-week="${week.weekStartDate}" data-day="${i}">${isActive ? "Set" : "✎"}</button>` : ""}
+          ${editable ? `<button class="edit-btn" data-action="edit" data-week="${week.id}" data-day="${i}">${isActive ? "Set" : "✎"}</button>` : ""}
         </div>
       `;
     })
     .join("");
 
-  // The weekly total row compares the DAILY AVERAGE actually eaten
-  // against the DAILY target — kept on the same scale (and ±200
-  // threshold) as every individual day row, instead of comparing raw
-  // week-wide totals.
+  // The weekly total row shows the DAILY AVERAGE actually eaten (not a
+  // raw week-total fraction), so it reads on the same scale as every
+  // day row above it. The diff next to it compares that average
+  // against the daily target, using the same ±200 rule.
   const dailyAverage = Math.round(totalActual / 7);
   const totalDiff = dailyAverage - week.dailyTarget;
   const totalVisual = classifyDiff(totalDiff);
@@ -143,14 +162,15 @@ function renderWeekBlock(week) {
       <div class="week-header">
         <span>${week.weekStartDate}</span>
         <span class="week-header-actions">
+          <button class="icon-btn" data-action="delete-week" data-week="${week.id}" title="Delete this week">×</button>
           ${isActiveWeek ? `<button class="icon-btn" data-action="add-past-week" title="Log a past week">+</button>` : ""}
-          ${isActiveWeek ? `<button data-action="edit-target" data-week="${week.weekStartDate}">⚙ Target: ${fmt(week.dailyTarget)}</button>` : ""}
+          ${isActiveWeek ? `<button data-action="edit-target" data-week="${week.id}">⚙ Target: ${fmt(week.dailyTarget)}</button>` : ""}
         </span>
       </div>
       ${rows}
       <div class="day-row total-row">
         <span class="day-name">Total</span>
-        <span class="day-consumed">${fmt(totalActual)} / ${fmt(totalTarget)}</span>
+        <span class="day-consumed">${fmt(dailyAverage)}</span>
         <span class="day-diff ${totalVisual.colorClass}">
           ${totalVisual.arrow ? `<span class="arrow ${totalVisual.colorClass}">${totalVisual.arrow}</span>` : ""}
           ${totalVisual.text}
@@ -181,23 +201,29 @@ function render() {
 }
 
 // ---------- Helpers ----------
-function findWeek(weekStartDate) {
-  return state.weeks.find((w) => w.weekStartDate === weekStartDate);
+function findWeek(weekId) {
+  return state.weeks.find((w) => w.id === weekId);
 }
 
 // ---------- Events ----------
 function attachEvents() {
   document.querySelectorAll('[data-action="edit"]').forEach((btn) => {
     btn.addEventListener("click", (e) => {
-      const weekStartDate = e.target.dataset.week;
+      const weekId = e.target.dataset.week;
       const dayIndex = parseInt(e.target.dataset.day, 10);
-      handleDayEdit(weekStartDate, dayIndex);
+      handleDayEdit(weekId, dayIndex);
     });
   });
 
   document.querySelectorAll('[data-action="edit-target"]').forEach((btn) => {
     btn.addEventListener("click", (e) => {
       handleTargetEdit(e.target.dataset.week);
+    });
+  });
+
+  document.querySelectorAll('[data-action="delete-week"]').forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      handleDeleteWeek(e.currentTarget.dataset.week);
     });
   });
 
@@ -208,8 +234,8 @@ function attachEvents() {
   if (resetBtn) resetBtn.addEventListener("click", handleResetData);
 }
 
-function handleDayEdit(weekStartDate, dayIndex) {
-  const week = findWeek(weekStartDate);
+function handleDayEdit(weekId, dayIndex) {
+  const week = findWeek(weekId);
   const day = week.days[dayIndex];
   const isActiveWeek = week.status === "active";
   const isActiveDay = isActiveWeek && dayIndex === week.currentDayIndex && !day.locked;
@@ -241,8 +267,8 @@ function handleDayEdit(weekStartDate, dayIndex) {
   render();
 }
 
-function handleTargetEdit(weekStartDate) {
-  const week = findWeek(weekStartDate);
+function handleTargetEdit(weekId) {
+  const week = findWeek(weekId);
   const input = prompt("New daily target:", week.dailyTarget);
   if (input === null) return;
   const value = parseInt(input, 10);
@@ -259,6 +285,22 @@ function handleTargetEdit(weekStartDate) {
     state.defaultDailyTarget = value;
   }
 
+  Storage.save(state);
+  render();
+}
+
+// Deletes a single week by its unique id — safe even if another week
+// happens to share the same display date. If the deleted week was the
+// active one, a fresh active week is created right after.
+function handleDeleteWeek(weekId) {
+  const week = findWeek(weekId);
+  if (!week) return;
+
+  const confirmed = confirm(`Delete the week of ${week.weekStartDate}? This can't be undone.`);
+  if (!confirmed) return;
+
+  state.weeks = state.weeks.filter((w) => w.id !== weekId);
+  Storage.ensureActiveWeek(state);
   Storage.save(state);
   render();
 }
@@ -288,9 +330,12 @@ function handleAddPastWeek() {
 
   const newWeek = Storage.createWeek(target, parsedDate, "past");
 
-  if (findWeek(newWeek.weekStartDate)) {
-    alert("A week starting on this Sunday already exists.");
-    return;
+  const sameDateExists = state.weeks.some((w) => w.weekStartDate === newWeek.weekStartDate);
+  if (sameDateExists) {
+    const proceedAnyway = confirm(
+      "A week starting on this Sunday already exists. Add it anyway as a separate entry?"
+    );
+    if (!proceedAnyway) return;
   }
 
   state.weeks.push(newWeek);

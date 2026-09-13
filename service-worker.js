@@ -3,7 +3,7 @@
 // from the cache — works fully offline. The actual data (localStorage)
 // is completely separate from this.
 
-const CACHE_NAME = "calorie-ledger-v2";
+const CACHE_NAME = "calorie-ledger-v3";
 const FILES_TO_CACHE = [
   "./index.html",
   "./style.css",

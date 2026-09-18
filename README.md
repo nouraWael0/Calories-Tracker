@@ -9,7 +9,7 @@ built to look and feel like a paper ledger, not a diet app.
 
 | Empty week | Logged week | Week settings |
 |---|---|---|
-| ![Empty week](screenshots/empty.png) | ![Logged week](screenshots/filled.png) | ![Week settings menu](screenshots/settings-menu.png) |
+| ![Empty week](screenshots/empty.jpeg) | ![Logged week](screenshots/filled.jpeg) | ![Week settings menu](screenshots/settings-menu.jpeg) |
 
 ## How it works
 

@@ -1,111 +1,44 @@
 # Calorie Ledger
 
-A single-page, offline-first PWA for tracking a weekly calorie budget —
-built to look and feel like a paper ledger, not a diet app.
+A simple, fast, and offline-first web app to track your weekly calorie budget. Built for real life — focus on weekly balance, not daily perfection.
 
-**Live app:** https://nouraWael0.github.io/Calories-Tracker/
+**Live App:** [Calories Tracker](https://nouraWael0.github.io/Calories-Tracker/)
 
-## Screenshots
+---
 
-| Empty week | Logged week | Week settings |
-|---|---|---|
-| ![Empty week](screenshots/empty.jpeg) | ![Logged week](screenshots/filled.jpeg) | ![Week settings menu](screenshots/settings-menu.jpeg) |
+## Overview & Screenshots
 
-## How it works
+| Empty Week | Logged Week | Week Settings |
+| :---: | :---: | :---: |
+| ![Empty week](screenshots/settings-menu.jpeg) | ![Logged week](screenshots/filled.jpeg) | ![Week settings menu](screenshots/empty.jpeg) |
 
-You set a daily calorie target once. Every week is laid out as seven
-rows (Sunday → Saturday) plus a **Ration** row at the bottom — the
-week's overall daily average, not a raw total.
+---
 
-**Weekly budget redistribution.** The week's total budget is
-`dailyTarget × 7`. Each time a day is locked in, the remaining budget
-is split evenly across the days still open:
+## Core Features & Usage Guide
 
-```
-remainingBudget = (dailyTarget × 7) − sum(consumed for locked days)
-newAllocated (per open day) = remainingBudget ÷ number of open days
-```
+### 1. Daily Target & Automatic Average
+* **Setting Your Target:** You set a baseline daily calorie goal once.
+* **Automatic Average:** The app calculates your actual daily average in real-time as you log meals, showing whether your week is on track overall rather than judging a single day.
 
-So eating less than your target one day raises what's available on
-the days after it, and vice versa — the live day always shows how much
-you actually have left to eat *today*.
+### 2. Smart Budget Redistribution (The Dynamic Allowance)
+* **Adaptive Remaining Calories:** When you overeat or undereat on any given day, the app automatically redistributes the remaining weekly budget across the rest of the week.
+* **Real-time Adjustment:** If you eat more today, your suggested allowance for upcoming days slightly decreases to keep your overall weekly average balanced.
 
-**Grading stays fixed.** Once a day is finished, its color/arrow is
-graded against the flat daily target — never the redistributed
-amount — so a day's grade always reflects your actual target, not
-however the week's budget happened to get rebalanced around it.
+### 3. Visual Indicators & Trend Arrows
+* **Color-Coded Status:** 
+  * **Green:** Indicates you are within your target budget.
+  * **Red / Warning:** Shows when a day or the weekly average exceeds your planned budget.
+* **Trend Arrows:** Dynamic arrows next to your numbers instantly indicate whether your calorie intake is trending higher or lower compared to your average.
 
-- 🟩 green — 200+ calories under target
-- 🟨 yellow — within ±200 of target
-- 🟥 red — 200+ calories over target
-- ✓ — exactly on target
+### 4. Data Privacy, Export & Import
+* **Local Storage:** All your logs and settings stay 100% on your local device.
+* **Export Data:** Easily download a complete JSON backup of your weekly logs at any time.
+* **Import Data:** Restore or transfer your tracked data to another browser or device with a single click.
 
-**Days lock** automatically at midnight, or manually when you tap
-"Set" and confirm. Locked days can still be edited later (with a
-confirmation), and editing a past day only ever affects the days
-*after* it — history never silently rewrites itself.
+---
 
-## Features
+## How to Install
 
-- **Single continuous page** — weeks stack from oldest (top) to newest
-  (bottom), like a running notebook. No separate history screen.
-- **Per-week settings (`⋮`)** — change a week's target, wipe its data,
-  bulk-fill every day to the target, or delete the week entirely.
-- **Log a past week** — backfill an entire week's data freely, in any
-  order, no locking required.
-- **Export / Import** — back up all data to a plain `.txt` file and
-  restore it later. Needed because installing this as a Home Screen
-  app on iOS uses separate storage from Safari, so every reinstall
-  after a code update needs a fresh import.
-- **Fully offline** — a service worker caches the app shell; all data
-  lives in `localStorage` on-device only, never sent anywhere.
-
-## Tech stack
-
-Plain HTML / CSS / JavaScript — no frameworks, no build step.
-
-- `index.html` — page shell
-- `style.css` — ledger-style theming
-- `storage.js` — data model + the redistribution math
-- `app.js` — rendering + all UI logic
-- `manifest.json` + `service-worker.js` — PWA/offline support
-
-## Running locally
-
-```bash
-git clone https://github.com/nouraWael0/Calories-Tracker.git
-cd Calories-Tracker
-python -m http.server 8000
-```
-
-Then open `http://localhost:8000`. Or, in VS Code, right-click
-`index.html` → **Open with Live Server**.
-
-## Deploying updates
-
-Replace the changed files, then:
-
-```bash
-git add .
-git commit -m "..."
-git push
-```
-
-GitHub Pages picks up the change automatically within a minute or two.
-
-## Export file format
-
-```
-yyyy-mm-dd
-Daily Target = 1200
-Sunday: 1300
-Monday: 1100
-Tuesday:
-Wednesday: 1100
-Thursday: 1200
-Friday: 1300
-Saturday: 1200
-```
-
-One block per week, separated by a blank line. An empty value after
-the colon means that day hasn't been logged yet.
+1. Open the **[Live App Link](https://nouraWael0.github.io/Calories-Tracker/)** in your browser.
+2. Tap **Share / Options** in your browser and select **Add to Home Screen**.
+3. Launch the app anytime right from your phone's home screen!
